@@ -30,6 +30,8 @@
 #include <cstdint>
 #include <glslang/Public/ShaderLang.h>
 
+#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanCapabilities.h"
+
 #ifndef VK_API_VERSION_MAJOR
 #define VK_API_VERSION_MAJOR(version) (((uint32_t)(version) >> 22) & 0x7FU)
 #define VK_API_VERSION_MINOR(version) (((uint32_t)(version) >> 12) & 0x3FFU)
@@ -556,6 +558,29 @@ VulkanRenderer::VulkanRenderer()
 		deviceExtensionFeatures = &pipelineRobustnessFeature;
 		pipelineRobustnessFeature.pipelineRobustness = VK_TRUE;
 	}
+
+	// NOUVEAU - Initialiser les capabilities pour détecter Adreno et FP16
+	VulkanCapabilities::Initialize(m_physicalDevice);
+
+	// NOUVEAU - Ajouter les features FP16 si supportés
+	VkPhysicalDeviceShaderFloat16Int8Features float16Features{};
+	VkPhysicalDevice16BitStorageFeatures storage16Features{};
+
+    #ifdef __ANDROID__
+	if (VulkanCapabilities::SupportsFP16())
+	{
+		float16Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+		float16Features.pNext = deviceExtensionFeatures;
+		float16Features.shaderFloat16 = VK_TRUE;
+		deviceExtensionFeatures = &float16Features;
+
+		storage16Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+		storage16Features.pNext = deviceExtensionFeatures;
+		storage16Features.storageBuffer16BitAccess = VK_TRUE;
+		storage16Features.uniformAndStorageBuffer16BitAccess = VK_TRUE;
+		deviceExtensionFeatures = &storage16Features;
+	}
+    #endif
 
 	std::vector<const char*> used_extensions;
 	VkDeviceCreateInfo createInfo = CreateDeviceCreateInfo(queueCreateInfos, deviceFeatures, deviceExtensionFeatures, used_extensions);
@@ -1178,6 +1203,20 @@ VkDeviceCreateInfo VulkanRenderer::CreateDeviceCreateInfo(const std::vector<VkDe
 		used_extensions.emplace_back(VK_EXT_DEPTH_CLIP_ENABLE_EXTENSION_NAME);
 	if (m_featureControl.deviceExtensions.pipeline_robustness)
 		used_extensions.emplace_back(VK_EXT_PIPELINE_ROBUSTNESS_EXTENSION_NAME);
+
+    // NOUVEAU - Ajouter les extensions FP16 pour Adreno si supportées
+    #ifdef __ANDROID__
+    if (VulkanCapabilities::SupportsFP16())
+    {
+        used_extensions.emplace_back(VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME);
+        used_extensions.emplace_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
+    }
+    // Extensions Qualcomm pour Adreno
+    if (VulkanCapabilities::SupportsQcomExtensions())
+    {
+        used_extensions.emplace_back("VK_QCOM_render_pass_transform");
+    }
+    #endif
 
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;

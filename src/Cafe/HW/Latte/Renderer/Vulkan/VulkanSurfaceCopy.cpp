@@ -152,72 +152,133 @@ CopySurfacePipelineInfo* VulkanRenderer::copySurface_getCachedPipeline(VkCopySur
 	return it->second;
 }
 
+RendererShaderVk* _vkGenSurfaceCopyShader_vs_fp16()
+{
+	std::string shaderStr(vsShaderSrc_FP16);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kVertex,
+		0, 0, false, false, shaderStr
+	);
+	vkShader->PreponeCompilation(true);
+	return vkShader;
+}
+
+RendererShaderVk* _vkGenSurfaceCopyShader_ps_colorToDepth_fp16()
+{
+	std::string shaderStr(psShaderSrc_colorToDepth_FP16);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kFragment,
+		0, 0, false, false, shaderStr
+	);
+	vkShader->PreponeCompilation(true);
+	return vkShader;
+}
+
+RendererShaderVk* _vkGenSurfaceCopyShader_ps_depthToColor_fp16()
+{
+	std::string shaderStr(psShaderSrc_depthToColor_FP16);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kFragment,
+		0, 0, false, false, shaderStr
+	);
+	vkShader->PreponeCompilation(true);
+	return vkShader;
+}
+
 RendererShaderVk* _vkGenSurfaceCopyShader_vs()
 {
-	const char* vsShaderSrc = 
-		"#version 450\r\n"
-		"layout(location = 0) out ivec2 passSrcTexelOffset;\r\n"
-		"layout(push_constant) uniform pushConstants {\r\n"
-		"vec2 vertexOffsets[4];\r\n"
-		"ivec2 srcTexelOffset;\r\n"
-		"}uf_pushConstants;\r\n"
-		"\r\n"
-		"void main(){\r\n"
-		//"ivec2 tUV;\r\n"
-		"vec2 tPOS;\r\n"
-		"switch(gl_VertexIndex)"
-		"{\r\n"
-		// AMD driver has issues with indexed push constant access, therefore use this workaround
-		"case 0: tPOS = uf_pushConstants.vertexOffsets[0].xy; break;\r\n"
-		"case 1: tPOS = uf_pushConstants.vertexOffsets[1].xy; break;\r\n"
-		"case 2: tPOS = uf_pushConstants.vertexOffsets[3].xy; break;\r\n"
-		"case 3: tPOS = uf_pushConstants.vertexOffsets[0].xy; break;\r\n"
-		"case 4: tPOS = uf_pushConstants.vertexOffsets[2].xy; break;\r\n"
-		"case 5: tPOS = uf_pushConstants.vertexOffsets[3].xy; break;\r\n"
-		"}"
-		"passSrcTexelOffset = uf_pushConstants.srcTexelOffset;\r\n"
-		"gl_Position = vec4(tPOS, 0, 1.0);\r\n"
-		"}\r\n";
+#ifdef __ANDROID__
+	if (VulkanCapabilities::SupportsFP16() && VulkanCapabilities::IsAdrenoGPU()) {
+		return _vkGenSurfaceCopyShader_vs_fp16();
+	}
+#endif
+
+	// Fallback: version FP32 originale
+	const char* vsShaderSrc =
+		"#version 450\n"
+		"layout(location = 0) out ivec2 passSrcTexelOffset;\n"
+		"layout(push_constant) uniform pushConstants {\n"
+		"    vec2 vertexOffsets[4];\n"
+		"    ivec2 srcTexelOffset;\n"
+		"}uf_pushConstants;\n"
+		"\n"
+		"void main(){\n"
+		"    vec2 tPOS;\n"
+		"    switch(gl_VertexIndex)\n"
+		"    {\n"
+		"    case 0: tPOS = uf_pushConstants.vertexOffsets[0].xy; break;\n"
+		"    case 1: tPOS = uf_pushConstants.vertexOffsets[1].xy; break;\n"
+		"    case 2: tPOS = uf_pushConstants.vertexOffsets[3].xy; break;\n"
+		"    case 3: tPOS = uf_pushConstants.vertexOffsets[0].xy; break;\n"
+		"    case 4: tPOS = uf_pushConstants.vertexOffsets[2].xy; break;\n"
+		"    case 5: tPOS = uf_pushConstants.vertexOffsets[3].xy; break;\n"
+		"    }\n"
+		"    passSrcTexelOffset = uf_pushConstants.srcTexelOffset;\n"
+		"    gl_Position = vec4(tPOS, 0, 1.0);\n"
+		"}\n";
 
 	std::string shaderStr(vsShaderSrc);
-	auto vkShader = new RendererShaderVk(RendererShader::ShaderType::kVertex, 0, 0, false, false, shaderStr);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kVertex,
+		0, 0, false, false, shaderStr
+	);
 	vkShader->PreponeCompilation(true);
 	return vkShader;
 }
 
 RendererShaderVk* _vkGenSurfaceCopyShader_ps_colorToDepth()
 {
-	const char* psShaderSrc = ""
-		"#version 450\r\n"
-		"layout(location = 0) in flat ivec2 passSrcTexelOffset;\r\n"
-		"layout(binding = 0) uniform sampler2D textureSrc;\r\n"
-		"in vec4 gl_FragCoord;\r\n"
-		"\r\n"
-		"void main(){\r\n"
-		"gl_FragDepth = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\r\n"
-		"}\r\n";
+#ifdef __ANDROID__
+	if (VulkanCapabilities::SupportsFP16() && VulkanCapabilities::IsAdrenoGPU()) {
+		return _vkGenSurfaceCopyShader_ps_colorToDepth_fp16();
+	}
+#endif
+
+	// Fallback: version FP32 originale
+	const char* psShaderSrc =
+		"#version 450\n"
+		"layout(location = 0) in flat ivec2 passSrcTexelOffset;\n"
+		"layout(binding = 0) uniform sampler2D textureSrc;\n"
+		"in vec4 gl_FragCoord;\n"
+		"\n"
+		"void main(){\n"
+		"    gl_FragDepth = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\n"
+		"}\n";
 
 	std::string shaderStr(psShaderSrc);
-	auto vkShader = new RendererShaderVk(RendererShader::ShaderType::kFragment, 0, 0, false, false, shaderStr);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kFragment,
+		0, 0, false, false, shaderStr
+	);
 	vkShader->PreponeCompilation(true);
 	return vkShader;
 }
 
 RendererShaderVk* _vkGenSurfaceCopyShader_ps_depthToColor()
 {
-	const char* psShaderSrc = ""
-		"#version 450\r\n"
-		"layout(location = 0) in flat ivec2 passSrcTexelOffset;\r\n"
-		"layout(binding = 0) uniform sampler2D textureSrc;\r\n"
-		"layout(location = 0) out vec4 colorOut0;\r\n"
-		"in vec4 gl_FragCoord;\r\n"
-		"\r\n"
-		"void main(){\r\n"
-		"colorOut0.r = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\r\n"
-		"}\r\n";
+#ifdef __ANDROID__
+	if (VulkanCapabilities::SupportsFP16() && VulkanCapabilities::IsAdrenoGPU()) {
+		return _vkGenSurfaceCopyShader_ps_depthToColor_fp16();
+	}
+#endif
+
+	// Fallback: version FP32 originale
+	const char* psShaderSrc =
+		"#version 450\n"
+		"layout(location = 0) in flat ivec2 passSrcTexelOffset;\n"
+		"layout(binding = 0) uniform sampler2D textureSrc;\n"
+		"layout(location = 0) out vec4 colorOut0;\n"
+		"in vec4 gl_FragCoord;\n"
+		"\n"
+		"void main(){\n"
+		"    colorOut0.r = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\n"
+		"}\n";
 
 	std::string shaderStr(psShaderSrc);
-	auto vkShader = new RendererShaderVk(RendererShader::ShaderType::kFragment, 0, 0, false, false, shaderStr);
+	auto vkShader = new RendererShaderVk(
+		RendererShader::ShaderType::kFragment,
+		0, 0, false, false, shaderStr
+	);
 	vkShader->PreponeCompilation(true);
 	return vkShader;
 }

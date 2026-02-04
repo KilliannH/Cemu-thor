@@ -10,6 +10,9 @@
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include "util/helpers/helpers.h"
 
+#include "VulkanCapabilities.h"
+#include "ShaderOptimizer.h"
+
 bool s_isLoadingShadersVk{ false };
 class FileCache* s_spirvCache{nullptr};
 
@@ -294,6 +297,28 @@ void RendererShaderVk::CompileInternal(bool isRenderThread)
 {
 	const bool compileWithDebugInfo = ((VulkanRenderer*)g_renderer.get())->IsTracingToolEnabled();
 
+	// NOUVEAU: Optimiser le shader pour Adreno si disponible
+	std::string optimizedGLSL = m_glslCode;
+    #ifdef __ANDROID__
+        if (VulkanCapabilities::IsAdrenoGPU()) {
+            // Appliquer les optimisations FP16 pour Adreno
+            // Utiliser Safe level pour éviter les régressions
+            optimizedGLSL = ShaderOptimizer::OptimizeForAdreno(
+                m_glslCode,
+                ShaderOptimizer::OptimizationLevel::Safe
+            );
+
+			// Log si le shader a été optimisé (debug uniquement)
+            #ifdef _DEBUG
+            if (optimizedGLSL != m_glslCode) {
+                cemuLog_logDebug(LogType::Force,
+                                 "Shader {:016x}_{:016x} optimized for Adreno",
+                                 m_baseHash, m_auxHash
+                );
+            }
+            #endif
+        }
+    #endif
 	// try to retrieve SPIR-V module from cache
 	if (s_isLoadingShadersVk && (m_isGameShader && !m_isGfxPackShader) && s_spirvCache && !compileWithDebugInfo)
 	{
@@ -327,7 +352,7 @@ void RendererShaderVk::CompileInternal(bool isRenderThread)
 	}
 
 	glslang::TShader Shader(state);
-	const char* cstr = m_glslCode.c_str();
+	const char* cstr = optimizedGLSL.c_str();  // ← Utiliser version optimisée
 	Shader.setStrings(&cstr, 1);
 	Shader.setEnvInput(glslang::EShSourceGlsl, state, glslang::EShClientVulkan, 100);
 	Shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetClientVersion::EShTargetVulkan_1_1);
@@ -381,13 +406,22 @@ void RendererShaderVk::CompileInternal(bool isRenderThread)
 	glslang::SpvOptions spvOptions;
 	spvOptions.disableOptimizer = false;
 	spvOptions.validate = false;
-	spvOptions.optimizeSize = true;
+    // MODIFIÉ: Ne pas optimiser pour la taille sur Android/Adreno
+    // Sur mobile, le cache est sur stockage rapide (UFS 3.1+)
+    // et on préfère optimiser pour la performance
+    #ifdef __ANDROID__
+	    spvOptions.optimizeSize = false;  // Préférer perf sur mobile
+    #else
+	    spvOptions.optimizeSize = true;   // Taille sur desktop
+    #endif
+
 	if (compileWithDebugInfo)
 	{
 		spvOptions.generateDebugInfo = true;
 		spvOptions.emitNonSemanticShaderDebugInfo = true;
 		spvOptions.emitNonSemanticShaderDebugSource = true;
 
+		// Utiliser le code original pour le debug, pas l'optimisé
 		Shader.addSourceText(m_glslCode.c_str(), (uint32)m_glslCode.size());
 		Shader.setSourceFile(fmt::format("shader_{:016x}_{:016x}.glsl", m_baseHash, m_auxHash).c_str());
 	}
