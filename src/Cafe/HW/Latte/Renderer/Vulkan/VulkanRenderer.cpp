@@ -689,6 +689,19 @@ VulkanRenderer::VulkanRenderer()
 
 VulkanRenderer::~VulkanRenderer()
 {
+	/ NOUVEAU - Sauvegarder le cache
+#ifdef __ANDROID__
+		if (VulkanCapabilities::IsAdrenoGPU()) {
+		ShaderCache::GetInstance().SaveToDisk();
+
+		// Afficher les stats
+		auto stats = ShaderCache::GetInstance().GetStats();
+		cemuLog_log(LogType::Force,
+					"ShaderCache stats: {} hits, {} misses, {:.1f}% hit rate",
+					stats.hitCount, stats.missCount, stats.GetHitRate() * 100.0f
+		);
+	}
+#endif
 	SubmitCommandBuffer();
 	WaitDeviceIdle();
 	WaitCommandBufferFinished(GetCurrentCommandBufferId());
@@ -1775,6 +1788,14 @@ void VulkanRenderer::ImguiInit()
 void VulkanRenderer::Initialize()
 {
 	Renderer::Initialize();
+	VulkanCapabilities::Initialize(m_physicalDevice);
+
+// NOUVEAU - Charger le cache d'optimisations
+#ifdef __ANDROID__
+	if (VulkanCapabilities::IsAdrenoGPU()) {
+		ShaderCache::GetInstance().LoadFromDisk();
+	}
+#endif
 	CreatePipelineCache();
 	ImguiInit();
 	CreateNullObjects();

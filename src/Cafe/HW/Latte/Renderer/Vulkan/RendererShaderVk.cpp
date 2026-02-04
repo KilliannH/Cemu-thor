@@ -297,29 +297,7 @@ void RendererShaderVk::CompileInternal(bool isRenderThread)
 {
 	const bool compileWithDebugInfo = ((VulkanRenderer*)g_renderer.get())->IsTracingToolEnabled();
 
-	// NOUVEAU: Optimiser le shader pour Adreno si disponible
-	std::string optimizedGLSL = m_glslCode;
-    #ifdef __ANDROID__
-        if (VulkanCapabilities::IsAdrenoGPU()) {
-            // Appliquer les optimisations FP16 pour Adreno
-            // Utiliser Safe level pour éviter les régressions
-            optimizedGLSL = ShaderOptimizer::OptimizeForAdreno(
-                m_glslCode,
-                ShaderOptimizer::OptimizationLevel::Safe
-            );
-
-			// Log si le shader a été optimisé (debug uniquement)
-            #ifdef _DEBUG
-            if (optimizedGLSL != m_glslCode) {
-                cemuLog_logDebug(LogType::Force,
-                                 "Shader {:016x}_{:016x} optimized for Adreno",
-                                 m_baseHash, m_auxHash
-                );
-            }
-            #endif
-        }
-    #endif
-	// try to retrieve SPIR-V module from cache
+	// try to retrieve SPIR-V module from cache FIRST
 	if (s_isLoadingShadersVk && (m_isGameShader && !m_isGfxPackShader) && s_spirvCache && !compileWithDebugInfo)
 	{
 		cemu_assert_debug(m_baseHash != 0);
@@ -331,8 +309,43 @@ void RendererShaderVk::CompileInternal(bool isRenderThread)
 			// generate shader from cached SPIR-V buffer
 			CreateVkShaderModule(std::span<uint32>((uint32*)cacheFileData.data(), cacheFileData.size() / sizeof(uint32)));
 			FinishCompilation();
-			return;
+			return;  // ← On sort ici, pas besoin d'optimiser
 		}
+	}
+
+	// Si on arrive ici, le shader n'est pas dans le cache SPIR-V
+	// On doit le compiler, donc on peut l'optimiser
+	std::string optimizedGLSL;
+
+#ifdef __ANDROID__
+	if (VulkanCapabilities::IsAdrenoGPU()) {
+		// Essayer de récupérer depuis le cache d'optimisations
+		if (!ShaderCache::GetInstance().GetOptimizedShader(m_baseHash, optimizedGLSL)) {
+			// Pas dans le cache, optimiser
+			optimizedGLSL = ShaderOptimizer::OptimizeForAdreno(
+				m_glslCode,
+				ShaderOptimizer::OptimizationLevel::Safe
+			);
+
+			// Stocker dans le cache
+			ShaderCache::GetInstance().StoreOptimizedShader(m_baseHash, optimizedGLSL);
+
+#ifdef _DEBUG
+			cemuLog_logDebug(LogType::Force,
+							 "Shader {:016x} optimized and cached", m_baseHash
+			);
+#endif
+		} else {
+#ifdef _DEBUG
+			cemuLog_logDebug(LogType::Force,
+							 "Shader {:016x} loaded from optimization cache", m_baseHash
+			);
+#endif
+		}
+	} else
+#endif
+	{
+		optimizedGLSL = m_glslCode;
 	}
 
 	EShLanguage state;
