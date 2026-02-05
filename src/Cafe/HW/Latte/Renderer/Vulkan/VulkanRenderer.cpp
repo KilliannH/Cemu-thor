@@ -31,6 +31,7 @@
 #include <glslang/Public/ShaderLang.h>
 
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanCapabilities.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/ShaderCache.h"
 
 #ifndef VK_API_VERSION_MAJOR
 #define VK_API_VERSION_MAJOR(version) (((uint32_t)(version) >> 22) & 0x7FU)
@@ -689,7 +690,7 @@ VulkanRenderer::VulkanRenderer()
 
 VulkanRenderer::~VulkanRenderer()
 {
-	/ NOUVEAU - Sauvegarder le cache
+	// NOUVEAU - Sauvegarder le cache
 #ifdef __ANDROID__
 		if (VulkanCapabilities::IsAdrenoGPU()) {
 		ShaderCache::GetInstance().SaveToDisk();

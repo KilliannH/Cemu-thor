@@ -1,3 +1,4 @@
+#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "VulkanCapabilities.h"
 #include <cstring>
 #include <algorithm>

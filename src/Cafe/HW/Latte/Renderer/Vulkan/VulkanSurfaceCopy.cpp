@@ -1,5 +1,60 @@
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanCapabilities.h"
+
+// Vertex Shader FP16
+static const char* vsShaderSrc_FP16 =
+	"#version 450\n"
+	"#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
+	"#extension GL_EXT_shader_16bit_storage : require\n"
+	"\n"
+	"layout(location = 0) out ivec2 passSrcTexelOffset;\n"
+	"layout(push_constant) uniform pushConstants {\n"
+	"    f16vec2 vertexOffsets[4];\n"
+	"    ivec2 srcTexelOffset;\n"
+	"}uf_pushConstants;\n"
+	"\n"
+	"void main(){\n"
+	"    f16vec2 tPOS;\n"
+	"    switch(gl_VertexIndex)\n"
+	"    {\n"
+	"    case 0: tPOS = uf_pushConstants.vertexOffsets[0]; break;\n"
+	"    case 1: tPOS = uf_pushConstants.vertexOffsets[1]; break;\n"
+	"    case 2: tPOS = uf_pushConstants.vertexOffsets[3]; break;\n"
+	"    case 3: tPOS = uf_pushConstants.vertexOffsets[0]; break;\n"
+	"    case 4: tPOS = uf_pushConstants.vertexOffsets[2]; break;\n"
+	"    case 5: tPOS = uf_pushConstants.vertexOffsets[3]; break;\n"
+	"    }\n"
+	"    passSrcTexelOffset = uf_pushConstants.srcTexelOffset;\n"
+	"    gl_Position = vec4(tPOS, 0, 1.0);\n"
+	"}\n";
+
+// Pixel Shader FP16 - Color to Depth
+static const char* psShaderSrc_colorToDepth_FP16 =
+	"#version 450\n"
+	"#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
+	"\n"
+	"layout(location = 0) in flat ivec2 passSrcTexelOffset;\n"
+	"layout(binding = 0) uniform sampler2D textureSrc;\n"
+	"in vec4 gl_FragCoord;\n"
+	"\n"
+	"void main(){\n"
+	"    gl_FragDepth = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\n"
+	"}\n";
+
+// Pixel Shader FP16 - Depth to Color
+static const char* psShaderSrc_depthToColor_FP16 =
+	"#version 450\n"
+	"#extension GL_EXT_shader_explicit_arithmetic_types_float16 : require\n"
+	"\n"
+	"layout(location = 0) in flat ivec2 passSrcTexelOffset;\n"
+	"layout(binding = 0) uniform sampler2D textureSrc;\n"
+	"layout(location = 0) out vec4 colorOut0;\n"
+	"in vec4 gl_FragCoord;\n"
+	"\n"
+	"void main(){\n"
+	"    colorOut0.r = texelFetch(textureSrc, passSrcTexelOffset + ivec2(gl_FragCoord.xy), 0).r;\n"
+	"}\n";
 
 struct CopyShaderPushConstantData_t
 {

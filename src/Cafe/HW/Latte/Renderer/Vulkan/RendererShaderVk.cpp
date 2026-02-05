@@ -12,6 +12,7 @@
 
 #include "VulkanCapabilities.h"
 #include "ShaderOptimizer.h"
+#include "ShaderCache.h"
 
 bool s_isLoadingShadersVk{ false };
 class FileCache* s_spirvCache{nullptr};
