@@ -6,6 +6,7 @@
 #include "Cafe/HW/Latte/Core/LatteTiming.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanCapabilities.h"
 
 SwapchainInfoVk::SwapchainInfoVk(bool mainWindow, Vector2i size) : mainWindow(mainWindow), m_desiredExtent(size)
 {
@@ -108,6 +109,26 @@ void SwapchainInfoVk::Create()
 	renderPassInfo.pAttachments = &colorAttachment;
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.pNext = nullptr;  // <-- AJOUTÉ ICI !
+
+    #ifdef __ANDROID__
+	VkRenderPassTransformBeginInfoQCOM transformInfo = {};
+	if (VulkanCapabilities::SupportsQcomRenderPassTransform())
+	{
+		VkSurfaceTransformFlagBitsKHR currentTransform =
+			VulkanRenderer::GetInstance()->GetCurrentSurfaceTransform();
+
+		if (currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
+		{
+			transformInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM;
+			transformInfo.pNext = nullptr;
+			transformInfo.transform = currentTransform;
+
+			// Chaîner au renderPassInfo
+			renderPassInfo.pNext = &transformInfo;
+		}
+	}
+    #endif
 	result = vkCreateRenderPass(m_logicalDevice, &renderPassInfo, nullptr, &m_swapchainRenderPass);
 	if (result != VK_SUCCESS)
 		UnrecoverableError("Failed to create renderpass for swapchain");
