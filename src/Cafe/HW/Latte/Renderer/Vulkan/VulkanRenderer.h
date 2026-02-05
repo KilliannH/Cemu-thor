@@ -145,7 +145,9 @@ class VulkanRenderer : public Renderer
 	static const inline int OCCLUSION_QUERY_POOL_SIZE = 1024;
 
 public:
-
+#ifdef __ANDROID__
+    VkSurfaceTransformFlagBitsKHR GetCurrentSurfaceTransform();
+#endif
 	// memory management
 	std::unique_ptr<VKRMemoryManager> memoryManager;
 	VKRMemoryManager* GetMemoryManager() const { return memoryManager.get(); };

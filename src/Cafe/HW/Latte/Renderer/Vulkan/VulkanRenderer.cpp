@@ -4501,3 +4501,11 @@ VKRObjectDescriptorSet::~VKRObjectDescriptorSet()
 	vkFreeDescriptorSets(vkr->GetLogicalDevice(), vkr->GetDescriptorPool(), 1, &descriptorSet);
 	performanceMonitor.vk.numDescriptorSets.decrement();
 }
+#ifdef __ANDROID__
+VkSurfaceTransformFlagBitsKHR VulkanRenderer::GetCurrentSurfaceTransform()
+{
+	// Version simple : pas de rotation pour l'instant
+	// Le driver Qualcomm optimisera quand même
+	return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+}
+#endif
