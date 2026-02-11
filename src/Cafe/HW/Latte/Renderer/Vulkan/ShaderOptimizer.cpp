@@ -9,11 +9,9 @@ const std::vector<std::string> ShaderOptimizer::s_unsafePatterns = {
     "mat4",           // Matrices 4x4 (transformations)
     "mat3",           // Matrices 3x3
     "projection",     // Variables de projection
-    "worldMatrix",    // Matrices world
     "viewMatrix",     // Matrices view
     "modelMatrix",    // Matrices model
     "gl_FragDepth",   // Sortie de profondeur
-    "gl_Position",    // Position (mais conversion auto OK)
     "dFd",            // Dérivées (precision critique)
 };
 
@@ -41,10 +39,15 @@ std::string ShaderOptimizer::OptimizeForAdreno(const std::string& glslSource, Op
     
     std::string result = glslSource;
     
-    // Appliquer conversion FP16
-    if (level == OptimizationLevel::Aggressive || IsSafeForFP16(result)) {
-        result = ConvertToFP16(result, level == OptimizationLevel::Aggressive);
-    }
+	// Apply FP16 conversion based on level
+	if (level == OptimizationLevel::Aggressive) {
+		// Aggressive: convert everything possible, may break some shaders
+			result = ConvertToFP16(result, true);
+	} else if (level == OptimizationLevel::Safe) {
+		// Safe: only convert local temporaries that are clearly safe
+		// Don't use the binary IsSafeForFP16 gate - instead, do selective conversion
+		result = ConvertLocalTemporariesToFP16(result);
+	}
     
     // Appliquer d'autres optimisations Adreno
     if (VulkanCapabilities::IsAdrenoGPU()) {
@@ -52,6 +55,34 @@ std::string ShaderOptimizer::OptimizeForAdreno(const std::string& glslSource, Op
     }
     
     return result;
+}
+
+std::string ShaderOptimizer::ConvertLocalTemporariesToFP16(const std::string& glslSource) {
+	if (!VulkanCapabilities::SupportsFP16()) {
+		return glslSource;
+	}
+
+	std::string result = AddFP16Extensions(glslSource);
+
+	// Only convert local variable declarations inside function bodies
+	// Skip: uniforms, layout declarations, in/out varyings, built-ins
+	// Pattern: match "type varname ;" or "type varname =" only when NOT preceded by
+	// layout, uniform, in, out, buffer, shared keywords on the same line
+
+	// Convert local vec4 temporaries (not uniforms/varyings)
+	std::regex localVec4(R"(^(\s+)(vec4)(\s+[a-zA-Z_][a-zA-Z0-9_]*\s*[;=]))", std::regex::multiline);
+	result = std::regex_replace(result, localVec4, "$1f16vec4$3");
+
+	std::regex localVec3(R"(^(\s+)(vec3)(\s+[a-zA-Z_][a-zA-Z0-9_]*\s*[;=]))", std::regex::multiline);
+	result = std::regex_replace(result, localVec3, "$1f16vec3$3");
+
+	std::regex localVec2(R"(^(\s+)(vec2)(\s+[a-zA-Z_][a-zA-Z0-9_]*\s*[;=]))", std::regex::multiline);
+	result = std::regex_replace(result, localVec2, "$1f16vec2$3");
+
+	std::regex localFloat(R"(^(\s+)(float)(\s+[a-zA-Z_][a-zA-Z0-9_]*\s*[;=]))", std::regex::multiline);
+	result = std::regex_replace(result, localFloat, "$1float16_t$3");
+
+	return result;
 }
 
 std::string ShaderOptimizer::ConvertToFP16(const std::string& glslSource, bool forceConvert) {
@@ -183,20 +214,20 @@ std::string ShaderOptimizer::ConvertTypes(const std::string& source) {
     // Pattern: type nom; ou type nom = ...;
     
     // vec4 → f16vec4 (sauf pour gl_Position, etc.)
-    std::regex vec4DeclPattern(R"(\b(vec4)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*[;=])");
-    result = std::regex_replace(result, vec4DeclPattern, "f16vec4 $2$3");
+	std::regex vec4DeclPattern(R"(\b(vec4)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*([;=]))");
+	result = std::regex_replace(result, vec4DeclPattern, "f16vec4 $2 $3");
     
     // vec3 → f16vec3
-    std::regex vec3DeclPattern(R"(\b(vec3)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*[;=])");
-    result = std::regex_replace(result, vec3DeclPattern, "f16vec3 $2$3");
+	std::regex vec3DeclPattern(R"(\b(vec3)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*([;=]))");
+	result = std::regex_replace(result, vec3DeclPattern, "f16vec3 $2 $3");
     
     // vec2 → f16vec2
-    std::regex vec2DeclPattern(R"(\b(vec2)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*[;=])");
-    result = std::regex_replace(result, vec2DeclPattern, "f16vec2 $2$3");
+	std::regex vec2DeclPattern(R"(\b(vec2)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*([;=]))");
+	result = std::regex_replace(result, vec2DeclPattern, "f16vec2 $2 $3");
     
     // float → float16_t (dans les déclarations, pas dans les casts)
-    std::regex floatDeclPattern(R"(\bfloat\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*[;=])");
-    result = std::regex_replace(result, floatDeclPattern, "float16_t $1$2");
+	std::regex floatDeclPattern(R"(\bfloat\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*([;=]))");
+	result = std::regex_replace(result, floatDeclPattern, "float16_t $1 $2");
     
     // Convertir aussi les types dans les layouts (uniforms, push constants)
     // layout(...) uniform ... { vec2 → f16vec2 }

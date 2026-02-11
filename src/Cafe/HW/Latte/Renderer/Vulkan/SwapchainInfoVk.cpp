@@ -109,26 +109,11 @@ void SwapchainInfoVk::Create()
 	renderPassInfo.pAttachments = &colorAttachment;
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.pNext = nullptr;  // <-- AJOUTÉ ICI !
+	renderPassInfo.pNext = nullptr;
 
-    #ifdef __ANDROID__
-	VkRenderPassTransformBeginInfoQCOM transformInfo = {};
-	if (VulkanCapabilities::SupportsQcomRenderPassTransform())
-	{
-		VkSurfaceTransformFlagBitsKHR currentTransform =
-			VulkanRenderer::GetInstance()->GetCurrentSurfaceTransform();
+	// NOTE: VK_QCOM_render_pass_transform must be applied at
+	// vkCmdBeginRenderPass time, not at vkCreateRenderPass time.
 
-		if (currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		{
-			transformInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM;
-			transformInfo.pNext = nullptr;
-			transformInfo.transform = currentTransform;
-
-			// Chaîner au renderPassInfo
-			renderPassInfo.pNext = &transformInfo;
-		}
-	}
-    #endif
 	result = vkCreateRenderPass(m_logicalDevice, &renderPassInfo, nullptr, &m_swapchainRenderPass);
 	if (result != VK_SUCCESS)
 		UnrecoverableError("Failed to create renderpass for swapchain");

@@ -30,7 +30,7 @@ void ShaderCache::StoreOptimizedShader(uint64_t originalHash, const std::string&
 
 	// Sauvegarder périodiquement (tous les 10 nouveaux shaders)
 	if (m_stats.totalEntries % 10 == 0) {
-		SaveToDisk();
+		SaveToDiskInternal();  // Lock already held, use internal version
 	}
 }
 
@@ -95,6 +95,13 @@ void ShaderCache::LoadFromDisk() {
 }
 
 void ShaderCache::SaveToDisk() {
+	std::lock_guard<std::mutex> lock(m_mutex);
+	SaveToDiskInternal();
+}
+
+void ShaderCache::SaveToDiskInternal() {
+	// IMPORTANT: Caller must hold m_mutex
+
 	auto cachePath = GetCacheFilePath();
 
 	// Créer le dossier parent si nécessaire
@@ -104,8 +111,6 @@ void ShaderCache::SaveToDisk() {
 	if (!file.is_open()) {
 		return;
 	}
-
-	std::lock_guard<std::mutex> lock(m_mutex);
 
 	try {
 		// Version du format

@@ -41,9 +41,9 @@ class ShaderCache {
      * Statistiques du cache
 	 */
 	struct Stats {
-		size_t hitCount;
-		size_t missCount;
-		size_t totalEntries;
+		size_t hitCount = 0;
+		size_t missCount = 0;
+		size_t totalEntries = 0;
 
 		float GetHitRate() const {
 			if (hitCount + missCount == 0) return 0.0f;
@@ -62,4 +62,7 @@ class ShaderCache {
 	Stats m_stats{};
 
 	std::filesystem::path GetCacheFilePath() const;
+
+	// Internal version that assumes m_mutex is already held
+	void SaveToDiskInternal();
 };

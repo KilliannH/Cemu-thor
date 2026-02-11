@@ -1795,26 +1795,10 @@ void VulkanRenderer::ImguiInit()
 	renderPassInfo.pAttachments = &colorAttachment;
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.pNext = nullptr;  // <-- AJOUTÉ ICI !
+	renderPassInfo.pNext = nullptr;
 
-#ifdef __ANDROID__
-	VkRenderPassTransformBeginInfoQCOM transformInfo = {};
-	if (VulkanCapabilities::SupportsQcomRenderPassTransform())
-	{
-		VkSurfaceTransformFlagBitsKHR currentTransform =
-			VulkanRenderer::GetInstance()->GetCurrentSurfaceTransform();
-
-		if (currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		{
-			transformInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM;
-			transformInfo.pNext = nullptr;
-			transformInfo.transform = currentTransform;
-
-			// Chaîner au renderPassInfo
-			renderPassInfo.pNext = &transformInfo;
-		}
-	}
-#endif
+	// NOTE: VK_QCOM_render_pass_transform must be applied a
+	// vkCmdBeginRenderPass time, not at vkCreateRenderPass time.
 
 	const auto result = vkCreateRenderPass(m_logicalDevice, &renderPassInfo, nullptr, &m_imguiRenderPass);
 	if (result != VK_SUCCESS)
@@ -1840,7 +1824,6 @@ void VulkanRenderer::ImguiInit()
 void VulkanRenderer::Initialize()
 {
 	Renderer::Initialize();
-	VulkanCapabilities::Initialize(m_physicalDevice);
 
 // NOUVEAU - Charger le cache d'optimisations
 #ifdef __ANDROID__
@@ -4375,28 +4358,9 @@ VKRObjectRenderPass::VKRObjectRenderPass(AttachmentInfo_t& attachmentInfo, sint3
 
 	renderPassInfo.pDependencies = nullptr;
 	renderPassInfo.dependencyCount = 0;
-	renderPassInfo.pNext = nullptr; // <-- AJOUTÉ ICI !
+	renderPassInfo.pNext = nullptr;
 									// before Cemu 1.25.5 we used zero here, which means implicit synchronization. For 1.25.5 it was changed to 2 (using the subpass dependencies above)
 									// Reverted this again to zero for Cemu 1.25.5b as the performance cost is just too high. Manual synchronization is preferred
-
-    #ifdef __ANDROID__
-	VkRenderPassTransformBeginInfoQCOM transformInfo = {};
-	if (VulkanCapabilities::SupportsQcomRenderPassTransform())
-	{
-		VkSurfaceTransformFlagBitsKHR currentTransform =
-			VulkanRenderer::GetInstance()->GetCurrentSurfaceTransform();
-
-		if (currentTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-		{
-			transformInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM;
-			transformInfo.pNext = nullptr;
-			transformInfo.transform = currentTransform;
-
-			// Chaîner au renderPassInfo
-			renderPassInfo.pNext = &transformInfo;
-		}
-	}
-    #endif
 
 	if (vkCreateRenderPass(VulkanRenderer::GetInstance()->GetLogicalDevice(), &renderPassInfo, nullptr, &m_renderPass) != VK_SUCCESS)
 	{
@@ -4504,8 +4468,22 @@ VKRObjectDescriptorSet::~VKRObjectDescriptorSet()
 #ifdef __ANDROID__
 VkSurfaceTransformFlagBitsKHR VulkanRenderer::GetCurrentSurfaceTransform()
 {
-	// Version simple : pas de rotation pour l'instant
-	// Le driver Qualcomm optimisera quand même
-	return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	// Query the actual surface transform from the current swapchain surface
+		if (m_physicalDevice == VK_NULL_HANDLE)
+			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
+		// Get the main window swapchain's surface if available
+		auto& chainInfo = chainInfos[0]; // main window
+		if (!chainInfo.surface)
+			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
+		VkSurfaceCapabilitiesKHR surfaceCaps{};
+		VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+			m_physicalDevice, chainInfo.surface, &surfaceCaps);
+
+		if (res != VK_SUCCESS)
+			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+
+		return surfaceCaps.currentTransform;
 }
 #endif

@@ -43,14 +43,14 @@ public:
      * Utile pour le debugging et l'analyse de performance
      */
     struct ShaderStats {
-        int vec2Count;
-        int vec3Count;
-        int vec4Count;
-        int mat4Count;
-        int textureOpsCount;
-        bool hasDepthOutput;
-        bool hasMatrixOps;
-        int estimatedRegisters; // Estimation basique
+        int vec2Count = 0;
+        int vec3Count = 0;
+        int vec4Count = 0;
+        int mat4Count = 0;
+        int textureOpsCount = 0;
+        bool hasDepthOutput = false;
+        bool hasMatrixOps = false;
+        int estimatedRegisters = 0; // Estimation basique
     };
     
     static ShaderStats AnalyzeShader(const std::string& glslSource);
@@ -67,7 +67,10 @@ private:
     
     // Applique des optimisations spécifiques Adreno (layouts, etc.)
     static std::string ApplyAdrenoOptimizations(const std::string& source);
-    
+
+	// Converts only local temporary variables to FP16 (safe subset)
+	static std::string ConvertLocalTemporariesToFP16(const std::string& source);
+
     // Patterns à ne jamais convertir en FP16
     static const std::vector<std::string> s_unsafePatterns;
     
