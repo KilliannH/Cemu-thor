@@ -4468,22 +4468,27 @@ VKRObjectDescriptorSet::~VKRObjectDescriptorSet()
 #ifdef __ANDROID__
 VkSurfaceTransformFlagBitsKHR VulkanRenderer::GetCurrentSurfaceTransform()
 {
-	// Query the actual surface transform from the current swapchain surface
-		if (m_physicalDevice == VK_NULL_HANDLE)
-			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	if (m_physicalDevice == VK_NULL_HANDLE || m_instance == VK_NULL_HANDLE)
+	return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 
-		// Get the main window swapchain's surface if available
-		auto& chainInfo = chainInfos[0]; // main window
-		if (!chainInfo.surface)
-			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+		VkSurfaceKHR tmpSurface = VK_NULL_HANDLE;
+	try
+	{
+		tmpSurface = CreateFramebufferSurface(m_instance, WindowSystem::GetWindowInfo().window_main, nullptr);
+	}
+	catch (...)
+	{
+		return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	}
 
 		VkSurfaceCapabilitiesKHR surfaceCaps{};
-		VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-			m_physicalDevice, chainInfo.surface, &surfaceCaps);
+		VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_physicalDevice, tmpSurface, &surfaceCaps);
+
+		vkDestroySurfaceKHR(m_instance, tmpSurface, nullptr);
 
 		if (res != VK_SUCCESS)
 			return VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
 
-		return surfaceCaps.currentTransform;
+	return surfaceCaps.currentTransform;
 }
 #endif
